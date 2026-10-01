@@ -1,0 +1,53 @@
+name: CI - Build Frontend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+env:
+  # We keep these for the build process, but Azure will handle the actual AWS deployment
+  BACKEND_API_GATEWAY_URL: https://ms92kgfcye.execute-api.ap-south-1.amazonaws.com/default/OnlineJudgeBackendAPI
+  COMPILER_API_GATEWAY_URL: https://8sjnn980xk.execute-api.ap-south-1.amazonaws.com/default/OnlineJudgeCompilerAPI
+
+jobs:
+  build-frontend:
+    name: Build & Package Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Build Frontend (Vite)
+        working-directory: frontend
+        run: |
+          npm ci
+          export VITE_BACKEND_URL=${{ env.BACKEND_API_GATEWAY_URL }}
+          export VITE_BACKEND_URL2=${{ env.COMPILER_API_GATEWAY_URL }}
+          npm run build
+
+      # STEP 1: UPLOAD ARTIFACT (The Package for Azure)
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-production-build
+          path: frontend/dist/
+          retention-days: 5
+
+      # STEP 2: TRIGGER AZURE (The Handshake)
+      - name: Trigger Azure Release
+        uses: Azure/pipelines@v1
+        with:
+          azure-devops-project-url: 'https://dev.azure.com/karrtik18projects/project-1'
+          azure-pipeline-name: 'online-judge-frontend'
+          azure-devops-token: ${{ secrets.AZURE_DEVOPS_TOKEN }}
